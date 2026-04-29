@@ -25,7 +25,7 @@ create table deals (
   expiry timestamptz not null,
   postedAt timestamptz default now(),
   image_url text,
-  user_id uuid references auth.users,
+  user_id uuid references public.profiles(id),
   created_at timestamptz default now()
 );
 
@@ -92,3 +92,27 @@ begin
   return seller_phone;
 end;
 $$;
+
+-- Trigger to auto-create profile on user signup
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.profiles (id, display_name)
+  values (
+    new.id,
+    coalesce(
+      new.raw_user_meta_data ->> 'display_name',
+      split_part(new.email, '@', 1)
+    )
+  );
+  return new;
+end;
+$$;
+
+create or replace trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
